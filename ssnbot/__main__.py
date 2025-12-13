@@ -1,7 +1,11 @@
+import asyncio
 import uvloop
 
-uvloop.install()
-import asyncio  # noqa: E402
+asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
 
 from pyropatch import pyropatch  # noqa: E402, F401
 from pyrogram import Client, idle, __version__  # noqa: E402
